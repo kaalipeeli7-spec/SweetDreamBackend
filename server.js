@@ -1,6 +1,6 @@
 const express = require("express");
 const bodyParser = require("body-parser");
-const sqlite3 = require("sqlite3").verbose();
+const Database = require("better-sqlite3");
 const { v4: uuidv4 } = require("uuid");
 const admin = require("firebase-admin");
 const multer = require("multer");
@@ -8,89 +8,96 @@ const path = require("path");
 const fs = require("fs");
 
 const app = express();
-const PORT = process.env.PORT || 3000; // 🔹 Use Render's dynamic port
+const PORT = process.env.PORT || 3000;
 
 // ================== INIT ==================
 app.use(bodyParser.json());
 
-// SQLite init
-const db = new sqlite3.Database("sweetdream.db");
-db.serialize(() => {
-  db.run(
-    "CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT, data TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)"
-  );
-  db.run(
-    "CREATE TABLE IF NOT EXISTS commands (id INTEGER PRIMARY KEY AUTOINCREMENT, commandId TEXT, commandType TEXT, payload TEXT, status TEXT, createdAt DATETIME DEFAULT CURRENT_TIMESTAMP, deliveredAt DATETIME)"
-  );
-});
-console.log("✅ SQLite initialized");
+// SQLite (better-sqlite3) init
+const db = new Database("sweetdream.db");
+
+// ✅ Ensure tables exist
+db.prepare(
+  "CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT, data TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)"
+).run();
+
+db.prepare(
+  "CREATE TABLE IF NOT EXISTS commands (id INTEGER PRIMARY KEY AUTOINCREMENT, commandId TEXT, commandType TEXT, payload TEXT, status TEXT, createdAt DATETIME DEFAULT CURRENT_TIMESTAMP, deliveredAt DATETIME)"
+).run();
+
+console.log("✅ SQLite (better-sqlite3) initialized");
 
 // Firebase init
 try {
-  if (!process.env.FIREBASE_SA) {
-    console.warn("⚠️ FIREBASE_SA not set, Firebase Admin will not initialize.");
-  } else {
-    const serviceAccount = JSON.parse(process.env.FIREBASE_SA);
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
-    });
-    console.log("✅ Firebase Admin initialized");
-  }
-} catch (e) {
-  console.error("❌ Firebase init error:", e);
+  const serviceAccount = JSON.parse(process.env.FIREBASE_SA);
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+  });
+  console.log("✅ Firebase Admin initialized");
+} catch (err) {
+  console.error("⚠️ Firebase init failed:", err.message);
 }
 
 // ================== EVENTS ==================
 app.post("/events", (req, res) => {
-  const { type, data } = req.body;
-  db.run(
-    "INSERT INTO events (type, data) VALUES (?, ?)",
-    [type, JSON.stringify(data)],
-    function (err) {
-      if (err) return res.status(500).json({ success: false, error: err.message });
-      res.json({ success: true });
-    }
-  );
+  try {
+    const { type, data } = req.body;
+    db.prepare("INSERT INTO events (type, data) VALUES (?, ?)").run(
+      type,
+      JSON.stringify(data)
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 app.get("/events", (req, res) => {
-  db.all("SELECT * FROM events ORDER BY id DESC LIMIT 50", [], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
+  try {
+    const rows = db
+      .prepare("SELECT * FROM events ORDER BY id DESC LIMIT 50")
+      .all();
     res.json(rows);
-  });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ================== COMMANDS ==================
 app.post("/commands", (req, res) => {
-  const { commandType, payload } = req.body;
-  const commandId = uuidv4();
-  db.run(
-    "INSERT INTO commands (commandId, commandType, payload, status) VALUES (?, ?, ?, ?)",
-    [commandId, commandType, JSON.stringify(payload || {}), "pending"],
-    function (err) {
-      if (err) return res.status(500).json({ error: err.message });
-      res.json({ commandId, status: "pending" });
-    }
-  );
+  try {
+    const { commandType, payload } = req.body;
+    const commandId = uuidv4();
+    db.prepare(
+      "INSERT INTO commands (commandId, commandType, payload, status) VALUES (?, ?, ?, ?)"
+    ).run(commandId, commandType, JSON.stringify(payload || {}), "pending");
+    res.json({ commandId, status: "pending" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.get("/commands/pending", (req, res) => {
-  db.all("SELECT * FROM commands WHERE status = 'pending'", [], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
+  try {
+    const rows = db
+      .prepare("SELECT * FROM commands WHERE status = 'pending'")
+      .all();
     res.json(rows);
-  });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.post("/commands/:id/ack", (req, res) => {
-  const { id } = req.params;
-  db.run(
-    "UPDATE commands SET status = ?, deliveredAt = datetime('now','localtime') WHERE commandId = ?",
-    ["delivered", id],
-    function (err) {
-      if (err) return res.status(500).json({ success: false, error: err.message });
-      res.json({ success: true });
-    }
-  );
+  try {
+    const { id } = req.params;
+    db.prepare(
+      "UPDATE commands SET status = ?, deliveredAt = datetime('now','localtime') WHERE commandId = ?"
+    ).run("delivered", id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // ================== AUDIO UPLOAD ==================
@@ -107,13 +114,15 @@ const audioStorage = multer.diskStorage({
 const uploadAudio = multer({ storage: audioStorage });
 
 app.post("/upload/audio", uploadAudio.single("file"), (req, res) => {
-  if (!req.file) return res.status(400).json({ success: false, error: "No file uploaded" });
+  if (!req.file)
+    return res.status(400).json({ success: false, error: "No file uploaded" });
   res.json({ success: true, path: req.file.path });
 });
 
 app.get("/download/audio/:filename", (req, res) => {
   const filePath = path.join(__dirname, "uploads", "audio", req.params.filename);
-  if (!fs.existsSync(filePath)) return res.status(404).json({ success: false, error: "File not found" });
+  if (!fs.existsSync(filePath))
+    return res.status(404).json({ success: false, error: "File not found" });
   res.download(filePath);
 });
 
@@ -131,7 +140,8 @@ const cameraStorage = multer.diskStorage({
 const uploadCamera = multer({ storage: cameraStorage });
 
 app.post("/upload/camera", uploadCamera.single("file"), (req, res) => {
-  if (!req.file) return res.status(400).json({ success: false, error: "No file uploaded" });
+  if (!req.file)
+    return res.status(400).json({ success: false, error: "No file uploaded" });
   res.json({ success: true, path: req.file.path });
 });
 
@@ -147,7 +157,8 @@ app.get("/list/camera", (req, res) => {
 
 app.get("/download/camera/:filename", (req, res) => {
   const filePath = path.join(__dirname, "uploads", "camera", req.params.filename);
-  if (!fs.existsSync(filePath)) return res.status(404).json({ success: false, error: "File not found" });
+  if (!fs.existsSync(filePath))
+    return res.status(404).json({ success: false, error: "File not found" });
   res.download(filePath);
 });
 
