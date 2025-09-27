@@ -9,7 +9,7 @@
     "postinstall": "npm rebuild better-sqlite3 --build-from-source"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": "20.x"
   },
   "dependencies": {
     "better-sqlite3": "^12.4.1",
