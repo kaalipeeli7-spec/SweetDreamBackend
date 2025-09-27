@@ -1,7 +1,32 @@
+# Node
 node_modules/
-firebase-service-account.json
-firebase-service-account.json.bak
+npm-debug.log
+yarn-error.log
+
+# Desktop build artifacts
+SweetDreamDesktop/dist/
+SweetDreamDesktop/build/
+SweetDreamDesktop/*.exe
+SweetDreamDesktop/*.msi
+SweetDreamDesktop/out/
+
+# Logs
+logs
+*.log
+*.log.*
+pids
+*.pid
+*.seed
+
+# SQLite database
 *.db
-sweetdream.db
-uploads/
+
+# Environment / secrets
 .env
+firebase-service-account.json
+.DS_Store
+
+# VSCode / IDE
+.vscode/
+.idea/
+*.iml
