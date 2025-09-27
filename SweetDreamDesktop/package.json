@@ -2,11 +2,41 @@
   "name": "sweetdream-desktop",
   "version": "1.0.0",
   "description": "SweetDream parental monitoring desktop app",
+  "author": "SweetDream Team",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "package": "electron-packager . SweetDreamDesktop --platform=win32 --arch=x64 --out=dist --overwrite",
+    "dist": "electron-builder"
   },
   "dependencies": {
-    "electron": "^28.0.0"
+    "axios": "^1.7.7"
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-packager": "^17.1.2",
+    "electron-builder": "^24.6.4"
+  },
+  "build": {
+    "appId": "com.sweetdream.desktop",
+    "productName": "SweetDreamDesktop",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "SweetDream Desktop"
+    }
   }
 }

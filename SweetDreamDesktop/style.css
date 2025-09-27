@@ -1,0 +1,88 @@
+/* ===== Light Theme (default) ===== */
+body {
+  font-family: Arial, sans-serif;
+  padding: 16px;
+  background: #ffffff;
+  color: #000000;
+  transition: background 0.3s, color 0.3s;
+}
+
+h1, h2, h3 {
+  margin-top: 20px;
+}
+
+.controls {
+  margin-bottom: 20px;
+}
+
+button {
+  margin: 5px;
+  padding: 10px 15px;
+  border: none;
+  background: #007bff;
+  color: white;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+button:hover {
+  background: #0056b3;
+}
+
+.event {
+  border-bottom: 1px solid #ccc;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+}
+
+pre {
+  background: #f9f9f9;
+  padding: 8px;
+  border-radius: 4px;
+  overflow-x: auto;
+}
+
+.gallery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.thumb {
+  text-align: center;
+}
+
+.audio-item {
+  margin-bottom: 10px;
+}
+
+/* ===== Dark Theme ===== */
+body.dark {
+  background: #121212;
+  color: #f0f0f0;
+}
+
+body.dark pre {
+  background: #1e1e1e;
+}
+
+body.dark button {
+  background: #444;
+  color: #f0f0f0;
+}
+
+body.dark button:hover {
+  background: #666;
+}
+
+/* Dark mode toggle button */
+.dark-toggle {
+  background: #222;
+  color: #f0f0f0;
+  margin-bottom: 20px;
+}
+body.dark .dark-toggle {
+  background: #ddd;
+  color: #000;
+}

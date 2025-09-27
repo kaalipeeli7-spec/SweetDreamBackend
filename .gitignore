@@ -1,4 +1,7 @@
 node_modules/
-events.db
-.DS_Store
-npm-debug.log
+firebase-service-account.json
+firebase-service-account.json.bak
+*.db
+sweetdream.db
+uploads/
+.env
